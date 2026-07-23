@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="COLDEM Admissions — Dashboard operativo de admisiones" />
+  <title>COLDEM Admissions</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span>C</span>
+        </div>
+        <div>
+          <strong>COLDEM</strong>
+          <small>Admissions</small>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Navegación principal">
+        <button class="nav-item active" data-view="summary">
+          <span class="nav-icon">⌂</span><span>Resumen</span>
+        </button>
+        <button class="nav-item" data-view="followup">
+          <span class="nav-icon">◎</span><span>Seguimiento</span>
+        </button>
+        <button class="nav-item" data-view="funnel">
+          <span class="nav-icon">▽</span><span>Embudo</span>
+        </button>
+        <button class="nav-item" data-view="acquisition">
+          <span class="nav-icon">↗</span><span>Adquisición</span>
+        </button>
+        <button class="nav-item nav-item-eod" data-view="eod">
+          <span class="nav-icon">✓</span><span>EOD</span>
+          <span class="nav-badge">Manual</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="mode-card">
+          <span class="status-dot" id="storage-dot"></span>
+          <div>
+            <strong id="storage-label">Modo local</strong>
+            <small id="storage-copy">Datos guardados en este navegador</small>
+          </div>
+        </div>
+        <p>V1 · Preparado para GHL</p>
+      </div>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobile-menu" aria-label="Abrir menú">☰</button>
+        <div class="page-heading">
+          <p class="eyebrow">COLDEM SCHOOL</p>
+          <h1 id="page-title">Resumen de admisiones</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="period-control">
+            <span>Periodo</span>
+            <select id="period-select">
+              <option value="7">Últimos 7 días</option>
+              <option value="30" selected>Últimos 30 días</option>
+              <option value="all">Todo el histórico</option>
+            </select>
+          </label>
+          <button class="icon-button" id="refresh-button" title="Actualizar">↻</button>
+          <div class="avatar" title="Equipo de admisiones">CA</div>
+        </div>
+      </header>
+
+      <main id="view-container" class="view-container" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="seed-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
