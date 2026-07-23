@@ -1,4 +1,4 @@
-window.COLDEM_SEED = {
+window.MILHANO_SEED = {
   "generatedAt": "2026-07-23T14:30:00-06:00",
   "dataset": {
     "totalLeads": 310,

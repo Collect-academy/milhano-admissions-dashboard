@@ -1,9 +1,8 @@
 (() => {
   "use strict";
 
-  const seed = window.COLDEM_SEED || { dataset: {}, dailyHistory: [] };
-  const config = window.COLDEM_CONFIG || { API_URL: "" };
-  const MANUAL_KEY = "coldem-eod-manual-v1";
+  const seed = window.MILHANO_SEED || { dataset: {}, dailyHistory: [] };
+  const MANUAL_KEY = "milhano-eod-demo";
   const app = document.getElementById("view-container");
   const pageTitle = document.getElementById("page-title");
   const periodSelect = document.getElementById("period-select");
@@ -17,7 +16,6 @@
     followupSearch: "",
     followupOwner: "all",
     followupStatus: "all",
-    loading: false,
   };
 
   const fieldLabels = {
@@ -66,8 +64,26 @@
 
   function parseDate(value) {
     if (!value) return null;
-    const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
-    return new Date(y, (m || 1) - 1, d || 1);
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value);
+
+    if (typeof value === "number" || /^\d{5}(?:\.\d+)?$/.test(String(value))) {
+      const serial = Number(value);
+      if (serial > 20000 && serial < 80000) {
+        const excelEpoch = new Date(1899, 11, 30);
+        excelEpoch.setDate(excelEpoch.getDate() + Math.floor(serial));
+        return excelEpoch;
+      }
+    }
+
+    const text = String(value).trim();
+    const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+
+    const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slash) return new Date(Number(slash[3]), Number(slash[1]) - 1, Number(slash[2]));
+
+    const fallback = new Date(text);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
   }
 
   function isoDate(date) {
@@ -149,6 +165,20 @@
     });
   }
 
+  function periodRangeText(days = state.period) {
+    const entries = allEntries();
+    const { start, end } = periodWindow(days, entries);
+    if (!end) return "Sin datos";
+    if (days === "all" || !start) return `${formatDate(entries[0]?.date, { short: true })} – ${formatDate(end, { short: true })}`;
+    return `${formatDate(start, { short: true })} – ${formatDate(end, { short: true })}`;
+  }
+
+  function daysSince(value, reference = maxEntryDate(allEntries())) {
+    const date = parseDate(value);
+    if (!date || !reference) return null;
+    return Math.max(0, Math.floor((reference.getTime() - date.getTime()) / 86400000));
+  }
+
   function aggregate(entries) {
     return {
       leads: entries.reduce((t, e) => t + totalLeads(e), 0),
@@ -222,78 +252,19 @@
     localStorage.setItem(MANUAL_KEY, JSON.stringify(state.manualEntries));
   }
 
-  async function loadRemoteEntries() {
-    if (!config.API_URL) return;
-    state.loading = true;
-    updateStorageMode();
-    try {
-      const response = await fetch(`${config.API_URL}?action=list&t=${Date.now()}`);
-      if (!response.ok) throw new Error("No se pudo leer el EOD compartido");
-      const data = await response.json();
-      state.manualEntries = Array.isArray(data.entries) ? data.entries : [];
-      saveLocalEntries();
-    } catch (error) {
-      state.manualEntries = loadLocalEntries();
-      showToast("No se pudo sincronizar; se usó la copia local.", "error");
-    } finally {
-      state.loading = false;
-      updateStorageMode();
-    }
-  }
-
   async function persistEntry(entry) {
     const existingIndex = state.manualEntries.findIndex((e) => e.id === entry.id);
     if (existingIndex >= 0) state.manualEntries[existingIndex] = entry;
     else state.manualEntries.push(entry);
     saveLocalEntries();
-
-    if (!config.API_URL) return true;
-    try {
-      const response = await fetch(config.API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "upsert", entry }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "No se pudo guardar");
-      return true;
-    } catch (error) {
-      showToast("Se guardó localmente, pero falló la sincronización compartida.", "error");
-      return false;
-    }
+    return true;
   }
 
   async function deleteEntry(id) {
-    const entry = state.manualEntries.find((e) => e.id === id);
     state.manualEntries = state.manualEntries.filter((e) => e.id !== id);
     saveLocalEntries();
     renderCurrentView();
-    if (!config.API_URL || !entry) return;
-    try {
-      await fetch(config.API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "delete", id }),
-      });
-    } catch {
-      showToast("El registro se eliminó localmente, pero no del origen compartido.", "error");
-    }
-  }
-
-  function updateStorageMode() {
-    const dot = document.getElementById("storage-dot");
-    const label = document.getElementById("storage-label");
-    const copy = document.getElementById("storage-copy");
-    if (!dot || !label || !copy) return;
-    if (config.API_URL) {
-      dot.classList.add("online");
-      label.textContent = state.loading ? "Sincronizando…" : "Modo compartido";
-      copy.textContent = "EOD visible para Cinthia y Paty";
-    } else {
-      dot.classList.remove("online");
-      label.textContent = "Modo local";
-      copy.textContent = "Configura Apps Script para compartir";
-    }
+    showToast("Registro eliminado.");
   }
 
   function metricCard(label, value, current, previous, icon, tone = "") {
@@ -359,24 +330,23 @@
     const weekend = latestWeekend();
     const active = seed.dataset.activeLeads || [];
     const countStatus = (status) => active.filter((lead) => lead.status === status).length;
-    const funnel = seed.dataset.funnel || {};
     const funnelStages = [
-      ["Leads", funnel.Leads],
-      ["Respondieron", funnel.Respondieron],
-      ["Qualified", funnel.Qualified],
-      ["Tour atendido", funnel["Tour atendido"]],
-      ["Pasadía", funnel["Pasadía atendida"]],
-      ["Inscritos", funnel.Inscritos],
+      ["Leads", current.leads],
+      ["Respondieron", current.responses],
+      ["Qualified", current.qualified],
+      ["Tour atendido", current.tourAttended],
+      ["Pasadía", current.passDayAttended],
+      ["Inscritos", current.enrolled],
     ];
 
     app.innerHTML = `
       <section class="view-header">
         <div>
           <h2>Panorama del pipeline</h2>
-          <p>Una lectura rápida de volumen, atención y avance desde WhatsApp hasta inscripción.</p>
+          <p>Una lectura rápida de volumen, atención y avance desde WhatsApp hasta inscripción.</p><span class="period-chip">${periodRangeText()}</span>
         </div>
         <div class="view-header-actions">
-          <button class="btn btn-secondary" data-view-link="followup">Ver pendientes</button>
+          <button class="btn btn-secondary" data-view-link="followup">Abrir seguimiento</button>
           <button class="btn btn-primary" data-view-link="eod">+ Capturar EOD</button>
         </div>
       </section>
@@ -434,8 +404,8 @@
       <section class="card">
         <div class="card-header">
           <div>
-            <h3 class="card-title">Embudo acumulado</h3>
-            <p class="card-subtitle">Hitos registrados en la base actual de ${formatNumber(seed.dataset.totalLeads)} leads.</p>
+            <h3 class="card-title">Embudo del periodo</h3>
+            <p class="card-subtitle">Actividad registrada entre ${periodRangeText()}.</p>
           </div>
           <button class="card-action" data-view-link="funnel">Analizar conversiones →</button>
         </div>
@@ -500,7 +470,7 @@
       <section class="view-header">
         <div>
           <h2>¿A quién hay que contactar ahora?</h2>
-          <p>Cola priorizada por etapa, tiempo sin interacción y siguiente acción. La V1 usa registros enmascarados del Excel.</p>
+          <p>Cola priorizada por etapa, tiempo sin interacción y siguiente acción disponible.</p>
         </div>
         <button class="btn btn-primary" data-view-link="eod">Registrar actividad EOD</button>
       </section>
@@ -529,17 +499,21 @@
           <table>
             <thead><tr><th>Lead</th><th>Estatus</th><th>Responsable</th><th>Intentos</th><th>Última interacción</th><th>Tiempo</th><th>Siguiente acción</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length ? filtered.map((lead) => `
+              ${filtered.length ? filtered.map((lead) => {
+                const inactiveDays = daysSince(lead.lastInteraction);
+                const urgency = inactiveDays === null || inactiveDays >= 3 ? "high" : "medium";
+                return `
                 <tr>
                   <td><div class="table-title"><span class="table-avatar">${esc(String(lead.id).slice(-2))}</span><div><strong>${esc(lead.family)} · ${esc(lead.id)}</strong><small>${esc(lead.grade)} · ${esc(lead.source)}</small></div></div></td>
                   <td>${statusBadge(lead.status)}</td>
                   <td>${esc(lead.owner)}</td>
                   <td>${lead.status === "Contactado" ? `${lead.calls}/5` : "—"}</td>
                   <td>${formatDate(lead.lastInteraction)}</td>
-                  <td><span class="priority-dot ${lead.priority === "Alta" ? "high" : "medium"}"></span>${lead.daysStuck === 999 ? "Sin fecha" : `${lead.daysStuck} días`}</td>
+                  <td><span class="priority-dot ${urgency}"></span>${inactiveDays === null ? "Sin fecha" : `${inactiveDays} días`}</td>
                   <td><strong>${esc(lead.nextAction)}</strong></td>
                   <td><button class="btn btn-secondary btn-small" data-lead-action="${esc(lead.id)}">Registrar</button></td>
-                </tr>`).join("") : `<tr><td colspan="8"><div class="empty-state"><strong>No hay resultados</strong>Ajusta los filtros o la búsqueda.</div></td></tr>`}
+                </tr>`;
+              }).join("") : `<tr><td colspan="8"><div class="empty-state"><strong>No hay resultados</strong>Ajusta los filtros o la búsqueda.</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -614,7 +588,7 @@
           </article>
 
           <article class="card">
-            <div class="card-header"><div><h3 class="card-title">Calidad de datos</h3><p class="card-subtitle">Campos que limitarán la conexión con GHL.</p></div></div>
+            <div class="card-header"><div><h3 class="card-title">Calidad de datos</h3><p class="card-subtitle">Campos que necesitan completarse para obtener métricas más confiables.</p></div></div>
             <div class="progress-list">
               ${Object.entries(missing).map(([label, value]) => `
                 <div><div class="progress-row-header"><span>${esc(label)}</span><strong>${formatNumber(value)}</strong></div><div class="progress-track"><div class="progress-fill" style="width:${pct(value, seed.dataset.totalLeads)}%"></div></div></div>`).join("")}
@@ -668,10 +642,8 @@
 
   function renderEod() {
     const entries = [...state.manualEntries].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    const maxDate = maxEntryDate(allEntries());
     const todayIso = isoDate(new Date());
     const weekend = latestWeekend();
-    const isShared = Boolean(config.API_URL);
 
     app.innerHTML = `
       <section class="view-header">
@@ -682,10 +654,8 @@
         <div class="view-header-actions"><button class="btn btn-secondary" id="export-eod">Exportar CSV</button></div>
       </section>
 
-      <div class="notice ${isShared ? "" : "warning"}">
-        ${isShared
-          ? "El modo compartido está activo: las capturas se sincronizan con el Google Sheet configurado."
-          : "La captura funciona ahora mismo, pero se guarda únicamente en este navegador. Para que Cinthia y Paty compartan el mismo EOD, despliega el Apps Script incluido y pega su URL en config.js."}
+      <div class="notice warning">
+        Esta captura es demostrativa. Necesito hacer una V2 para almacenar los EOD y compartirlos entre Cinthia y Paty.
       </div>
 
       <section class="form-layout">
@@ -753,7 +723,7 @@
 
         <aside>
           <article class="card weekend-card">
-            <div class="weekend-hero"><div><strong>Captura rápida de fin de semana</strong><p>Guarda sábado y domingo aunque nadie pueda responder hasta el lunes.</p></div><div class="weekend-number">${weekend.pending}</div></div>
+            <div class="weekend-hero"><div><strong>Leads recibidos en fin de semana</strong><p>Registra aquí lo que entró sábado y domingo, aunque el seguimiento comience el lunes.</p></div><div class="weekend-number">${weekend.pending}</div></div>
             <form id="weekend-form">
               <div class="weekend-fields">
                 <div class="form-field"><label>Sábado</label><input name="saturdayDate" type="date" value="${weekend.saturday}"><input name="saturdayLeads" type="number" min="0" value="0" aria-label="Leads del sábado"></div>
@@ -764,13 +734,14 @@
             </form>
           </article>
 
-          <article class="card" style="margin-top:18px">
-            <div class="card-header"><div><h3 class="card-title">Regla de fin de semana</h3><p class="card-subtitle">Cómo se refleja en el dashboard.</p></div></div>
-            <div class="metric-list">
-              <div class="metric-row"><div><strong>Sábado y domingo</strong><small>Se registran como leads recibidos, contacto = 0.</small></div><span class="badge badge-yellow">Backlog</span></div>
-              <div class="metric-row"><div><strong>Lunes</strong><small>Se captura el backlog inicial y la actividad realizada.</small></div><span class="badge badge-green">Acción</span></div>
-              <div class="metric-row"><div><strong>Resultado</strong><small>No castiga el tiempo de respuesta como si fuera día hábil.</small></div><span class="badge badge-blue">Visible</span></div>
+          <article class="card weekend-guide-card" style="margin-top:18px">
+            <div class="card-header"><div><h3 class="card-title">Cómo registrar el fin de semana</h3><p class="card-subtitle">La idea es separar los leads que llegan fuera de horario de la actividad que realiza el equipo el lunes.</p></div></div>
+            <div class="weekend-guide">
+              <div class="weekend-step"><span>1</span><div><strong>Sábado y domingo</strong><p>Registra únicamente cuántos leads llegaron. Si nadie pudo atenderlos, deja WhatsApp, llamadas y respuestas en cero. Quedarán identificados como pendientes para el siguiente día hábil.</p></div></div>
+              <div class="weekend-step"><span>2</span><div><strong>Al comenzar el lunes</strong><p>Coloca el total acumulado en <b>Backlog al iniciar</b>. Después registra normalmente los contactos, llamadas, respuestas y avances que se lograron durante el día.</p></div></div>
+              <div class="weekend-step"><span>3</span><div><strong>Al cerrar el lunes</strong><p>En <b>Pendientes al cierre</b> indica cuántas familias todavía faltan por atender. Así se ve claramente cuánto llegó, cuánto resolvió el equipo y qué quedó para el martes.</p></div></div>
             </div>
+            <div class="weekend-example"><strong>Ejemplo:</strong> entraron 8 leads entre sábado y domingo. El lunes se contactaron 6 y quedaron 2 pendientes. El EOD del lunes mostraría backlog inicial 8 y pendientes al cierre 2.</div>
           </article>
         </aside>
       </section>
@@ -883,59 +854,78 @@
     const blob = new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `coldem-eod-${isoDate(maxEntryDate(allEntries()))}.csv`;
+    link.download = `milhano-eod-${isoDate(maxEntryDate(allEntries()))}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
+  }
+
+  function resetFollowupFilters() {
+    state.followupTab = "all";
+    state.followupSearch = "";
+    state.followupOwner = "all";
+    state.followupStatus = "all";
+  }
+
+  function updatePeriodControlVisibility() {
+    const control = document.querySelector(".period-control");
+    if (control) control.hidden = state.currentView !== "summary";
   }
 
   function renderCurrentView() {
     pageTitle.textContent = pageTitles[state.currentView];
     document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.currentView));
+    updatePeriodControlVisibility();
     if (state.currentView === "summary") renderSummary();
     if (state.currentView === "followup") renderFollowup();
     if (state.currentView === "funnel") renderFunnel();
     if (state.currentView === "acquisition") renderAcquisition();
     if (state.currentView === "eod") renderEod();
-    bindDynamicNavigation();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function navigate(view) {
+    if (view === "followup" && state.currentView !== "followup") resetFollowupFilters();
     state.currentView = view;
     document.getElementById("sidebar")?.classList.remove("open");
     renderCurrentView();
   }
 
-  function bindDynamicNavigation() {
-    document.querySelectorAll("[data-view-link]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.viewLink)));
-    document.querySelectorAll("[data-followup-tab]").forEach((button) => button.addEventListener("click", () => { state.followupTab = button.dataset.followupTab; renderFollowup(); }));
-    document.querySelectorAll("[data-lead-action]").forEach((button) => button.addEventListener("click", () => {
-      showToast(`Actividad de ${button.dataset.leadAction}: regístrala en el EOD.`);
+  app.addEventListener("click", (event) => {
+    const viewButton = event.target.closest("[data-view-link]");
+    if (viewButton) {
+      navigate(viewButton.dataset.viewLink);
+      return;
+    }
+
+    const tabButton = event.target.closest("[data-followup-tab]");
+    if (tabButton) {
+      state.followupTab = tabButton.dataset.followupTab;
+      renderFollowup();
+      return;
+    }
+
+    const leadButton = event.target.closest("[data-lead-action]");
+    if (leadButton) {
+      showToast(`Actividad de ${leadButton.dataset.leadAction}: regístrala en el EOD.`);
       setTimeout(() => navigate("eod"), 450);
-    }));
-    document.querySelectorAll("[data-delete-eod]").forEach((button) => button.addEventListener("click", () => deleteEntry(button.dataset.deleteEod)));
-  }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-eod]");
+    if (deleteButton) deleteEntry(deleteButton.dataset.deleteEod);
+  });
 
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   document.getElementById("mobile-menu")?.addEventListener("click", () => document.getElementById("sidebar")?.classList.toggle("open"));
-  document.getElementById("refresh-button")?.addEventListener("click", async () => {
-    if (config.API_URL) await loadRemoteEntries();
-    renderCurrentView();
-    showToast("Dashboard actualizado.");
-  });
   periodSelect?.addEventListener("change", (event) => {
     state.period = event.target.value;
-    if (state.currentView === "summary") renderSummary();
+    renderCurrentView();
   });
 
-  async function init() {
+  function init() {
     state.manualEntries = loadLocalEntries();
-    updateStorageMode();
+    periodSelect.value = state.period;
     renderCurrentView();
-    if (config.API_URL) {
-      await loadRemoteEntries();
-      renderCurrentView();
-    }
   }
 
   init();

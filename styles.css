@@ -85,8 +85,8 @@ button { cursor: pointer; }
 .brand strong {
   display: block;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 16px;
-  letter-spacing: .12em;
+  font-size: 13px;
+  letter-spacing: .065em;
 }
 
 .brand small {
@@ -136,39 +136,6 @@ button { cursor: pointer; }
 }
 
 .nav-item.active .nav-icon { background: #fff; color: var(--brand-dark); }
-.nav-badge {
-  margin-left: auto;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: rgba(213,169,62,.19);
-  color: #ffe9a7;
-}
-
-.sidebar-footer { margin-top: auto; }
-.sidebar-footer > p {
-  margin: 12px 8px 0;
-  color: rgba(255,255,255,.42);
-  font-size: 11px;
-}
-
-.mode-card {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 13px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.08);
-}
-
-.mode-card strong { display:block; font-size:12px; }
-.mode-card small { display:block; margin-top:2px; color:rgba(255,255,255,.55); font-size:10px; line-height:1.35; }
-.status-dot { width:9px; height:9px; border-radius:50%; background:#f6c85f; box-shadow:0 0 0 5px rgba(246,200,95,.1); flex:none; }
-.status-dot.online { background:#75d8a6; box-shadow:0 0 0 5px rgba(117,216,166,.1); }
-
 .main-column { grid-column: 2; min-width: 0; }
 
 .topbar {
@@ -461,6 +428,25 @@ tbody tr:hover { background:#fbfcfb; }
 }
 .toast.show { opacity:1; transform:translateY(0); }
 .toast.error { background:#8f3434; }
+
+
+.period-chip {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.weekend-guide { display: grid; gap: 15px; }
+.weekend-step { display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 11px; align-items: start; }
+.weekend-step > span { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-dark); font-weight: 800; }
+.weekend-step strong { display: block; margin-bottom: 4px; }
+.weekend-step p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.weekend-example { margin-top: 17px; padding: 13px 14px; border-radius: 13px; background: var(--surface-soft); border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; line-height: 1.55; }
 
 @media (max-width: 1280px) {
   .kpi-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
